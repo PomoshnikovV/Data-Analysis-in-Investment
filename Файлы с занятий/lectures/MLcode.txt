@@ -1,0 +1,102 @@
+import numpy as np
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import (accuracy_score, precision_score,
+                             recall_score, f1_score,
+                             roc_auc_score, confusion_matrix)
+from sklearn.linear_model import LogisticRegression
+from sklearn.dummy import DummyClassifier
+er
+
+df_inv = pd.read_csv(inv_path)
+df_bank = pd.read_csv(bank_path)
+
+# Смотрим первые строки, чтобы обсудить признаки и целевую переменную
+display(df_inv.head())
+display(df_bank.head())
+
+
+# Разделяем данные на признаки X и целевую переменную y
+X = df.drop(columns=[target])
+y = df[target]
+
+print("Целевая переменная:", target)
+print("Распределение классов:\n", y.value_counts(normalize=True))
+
+# Делим данные на train и test
+# stratify=y сохраняет долю классов между train и test, это важно при дисбалансе
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.25,
+    random_state=42,
+    stratify=y
+)
+
+print("Размер X_train:", X_train.shape, "Размер X_test:", X_test.shape)
+
+# Строим базовую модель DummyClassifier
+# Стратегия most_frequent всегда предсказывает самый частый класс в обучающей выборке
+# Это даёт нам нулевую линию качества, с которой сравниваем настоящие модели
+baseline = DummyClassifier(strategy="most_frequent")
+baseline.fit(X_train, y_train)
+y_pred_baseline = baseline.predict(X_test)
+
+baseline_acc = accuracy_score(y_test, y_pred_baseline)
+print("Accuracy базовой модели (most_frequent):", baseline_acc)
+
+# Определяем списки числовых и категориальных признаков
+# Это нужно, чтобы корректно построить препроцессор
+cat_cols = X.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
+num_cols = [c for c in X.columns if c not in cat_cols]
+
+print("Числовые признаки:", num_cols)
+print("Категориальные признаки:", cat_cols)
+
+# Собираем препроцессор через ColumnTransformer
+# Для числовых признаков используем StandardScaler, чтобы привести их к одному масштабу
+# Для категориальных признаков используем OneHotEncoder, чтобы превратить категории в индикаторы
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", StandardScaler(), num_cols),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols),
+    ],
+    remainder="drop",
+    verbose_feature_names_out=False,
+)
+
+# Создаём модель логистической регрессии
+# Логистическая регрессия выдаёт вероятности класса и хорошо подходит для демонстрации бинарной классификации
+clf = LogisticRegression(max_iter=300)
+
+# Объединяем препроцессор и модель в один Pipeline
+# Это обеспечивает одинаковый препроцессинг для train и test и упрощает код
+model = Pipeline(steps=[
+    ("preprocessor", preprocessor),
+    ("clf", clf),
+])
+
+# Обучаем модель на обучающей выборке
+model.fit(X_train, y_train)
+
+# Делаем предсказания классов и вероятностей на тестовой выборке
+y_pred = model.predict(X_test)
+y_proba = model.predict_proba(X_test)[:, 1]
+
+# Считаем метрики бинарной классификации
+acc = accuracy_score(y_test, y_pred)
+prec = precision_score(y_test, y_pred, zero_division=0)
+rec = recall_score(y_test, y_pred, zero_division=0)
+f1 = f1_score(y_test, y_pred, zero_division=0)
+roc = roc_auc_score(y_test, y_proba)
+cm = confusion_matrix(y_test, y_pred)
+
+print("Accuracy модели:", acc)
+print("Precision:", prec)
+print("Recall:", rec)
+print("F1:", f1)
+print("ROC-AUC:", roc)
+print("Confusion matrix:\n", cm)
